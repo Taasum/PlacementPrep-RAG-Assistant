@@ -1,115 +1,113 @@
 import { useState } from "react";
 import "./App.css";
 
-const suggestions = [
-  "What is deadlock in Operating Systems?",
-  "Explain normalization in DBMS",
-  "What is the difference between TCP and UDP?",
-  "Explain BFS and DFS",
-];
-
 function App() {
-  const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
+  const [question, setQuestion] = useState("");
+  const [subject, setSubject] = useState("All Subjects");
   const [loading, setLoading] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState("All Subjects");
   const [uploading, setUploading] = useState(false);
 
-  const uploadPDF = async (event) => {
-  const file = event.target.files[0];
+  const suggestions = [
+    "What is deadlock in operating systems?",
+    "Explain normalization in DBMS.",
+    "What is the difference between TCP and UDP?",
+    "Explain BFS and DFS.",
+  ];
 
-  if (!file) return;
+  const askQuestion = async (customQuestion = null) => {
+    const currentQuestion = customQuestion || question.trim();
 
-  if (file.type !== "application/pdf") {
-    alert("Please select a PDF file.");
-    return;
-  }
+    if (!currentQuestion || loading) return;
 
-  const formData = new FormData();
-  formData.append("file", file);
+    const userMessage = {
+      role: "user",
+      content: currentQuestion,
+    };
 
-  setUploading(true);
-
-  try {
-    const response = await fetch(
-      "http://127.0.0.1:8000/upload",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error("Upload failed");
-    }
-
-    alert(
-      `${data.filename} uploaded and indexed successfully.`
-    );
-  } catch (error) {
-    console.error(error);
-    alert("Failed to upload PDF.");
-  } finally {
-    setUploading(false);
-    event.target.value = "";
-  }
-};
-  const askQuestion = async (text = question) => {
-    if (!text.trim() || loading) return;
-
-    const userQuestion = text.trim();
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        type: "user",
-        text: userQuestion,
-      },
-    ]);
-
+    setMessages((prev) => [...prev, userMessage]);
     setQuestion("");
     setLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/ask", {
+      const response = await fetch("/ask", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: userQuestion,
-          subject: selectedSubject,
+          question: currentQuestion,
+          subject: subject,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("API request failed");
-      }
-
       const data = await response.json();
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "bot",
-          text: data.answer,
-          sources: data.sources || [],
-        },
-      ]);
+      if (!response.ok) {
+        throw new Error("Failed to get answer");
+      }
+
+      const assistantMessage = {
+        role: "assistant",
+        content: data.answer,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      console.error(error);
+
       setMessages((prev) => [
         ...prev,
         {
-          type: "bot",
-          text: "I couldn't connect to the backend. Please make sure FastAPI is running on port 8000.",
-          sources: [],
-          error: true,
+          role: "assistant",
+          content:
+            "Sorry, something went wrong while generating the answer.",
         },
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const uploadPDF = async (event) => {
+    const file = event.target.files[0];
+
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      alert("Please select a PDF file.");
+      event.target.value = "";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setUploading(true);
+
+    try {
+      const response = await fetch("/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      if (data.error) {
+        alert(`Upload failed: ${data.error}`);
+      } else {
+        alert(`${data.filename} uploaded and indexed successfully.`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Failed to upload PDF.");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
     }
   };
 
@@ -120,14 +118,15 @@ function App() {
     }
   };
 
-  const clearChat = () => {
+  const newChat = () => {
     setMessages([]);
+    setQuestion("");
   };
 
   return (
     <div className="app">
 
-      {/* Sidebar */}
+      {/* ================= SIDEBAR ================= */}
       <aside className="sidebar">
 
         <div className="brand">
@@ -135,144 +134,156 @@ function App() {
 
           <div>
             <h2>PlacementPrep</h2>
-            <span>AI Study Assistant</span>
+            <p>AI Study Assistant</p>
           </div>
         </div>
 
-        <button
-          className="new-chat"
-          onClick={clearChat}
-          
-        >
-        <label className="upload-button">
-  <span>↑</span>
-  {uploading ? "Uploading..." : "Upload PDF"}
+        {/* Upload + New Chat */}
+        <div className="sidebar-actions">
 
-  <input
-    type="file"
-    accept=".pdf,application/pdf"
-    onChange={uploadPDF}
-    disabled={uploading}
-    hidden
-  />
-</label>
-          <span>＋</span>
-          New Chat
-        </button>
+          <label className="upload-button">
+            <span>↑</span>
+            {uploading ? "Uploading..." : "Upload PDF"}
 
-        <div className="sidebar-section">
-          <p className="section-title">STUDY MATERIAL</p>
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={uploadPDF}
+              disabled={uploading}
+              hidden
+            />
+          </label>
 
-          <div
-  className={`subject ${
-    selectedSubject === "All Subjects" ? "active" : ""
-  }`}
-  onClick={() => setSelectedSubject("All Subjects")}
->
-  <span className="subject-icon">⌘</span>
-  <span>All Subjects</span>
-</div>
+          <button className="new-chat-button" onClick={newChat}>
+            <span>＋</span>
+            New Chat
+          </button>
 
-          <div
-  className={`subject ${
-    selectedSubject === "Operating Systems" ? "active" : ""
-  }`}
-  onClick={() => setSelectedSubject("Operating Systems")}
->
-  <span className="subject-icon">◈</span>
-  <span>Operating Systems</span>
-</div>
-
-          <div
-  className={`subject ${
-    selectedSubject === "DBMS" ? "active" : ""
-  }`}
-  onClick={() => setSelectedSubject("DBMS")}
->
-  <span className="subject-icon">▣</span>
-  <span>DBMS</span>
-</div>
-
-          <div
-  className={`subject ${
-    selectedSubject === "Computer Networks" ? "active" : ""
-  }`}
-  onClick={() => setSelectedSubject("Computer Networks")}
->
-  <span className="subject-icon">◇</span>
-  <span>Computer Networks</span>
-</div>
-
-         <div
-  className={`subject ${
-    selectedSubject === "DSA" ? "active" : ""
-  }`}
-  onClick={() => setSelectedSubject("DSA")}
->
-  <span className="subject-icon">λ</span>
-  <span>DSA</span>
-</div>
         </div>
 
-        <div className="sidebar-bottom">
+        {/* Study Material */}
+        <div className="study-material">
+
+          <div className="section-title">
+            STUDY MATERIAL
+          </div>
+
+          <button
+            className={`subject-button ${
+              subject === "All Subjects" ? "active" : ""
+            }`}
+            onClick={() => setSubject("All Subjects")}
+          >
+            <span>⌘</span>
+            All Subjects
+          </button>
+
+          <button
+            className={`subject-button ${
+              subject === "Operating Systems" ? "active" : ""
+            }`}
+            onClick={() => setSubject("Operating Systems")}
+          >
+            <span>◇</span>
+            Operating Systems
+          </button>
+
+          <button
+            className={`subject-button ${
+              subject === "DBMS" ? "active" : ""
+            }`}
+            onClick={() => setSubject("DBMS")}
+          >
+            <span>▣</span>
+            DBMS
+          </button>
+
+          <button
+            className={`subject-button ${
+              subject === "Computer Networks" ? "active" : ""
+            }`}
+            onClick={() => setSubject("Computer Networks")}
+          >
+            <span>◇</span>
+            Computer Networks
+          </button>
+
+          <button
+            className={`subject-button ${
+              subject === "DSA" ? "active" : ""
+            }`}
+            onClick={() => setSubject("DSA")}
+          >
+            <span>λ</span>
+            DSA
+          </button>
+
+        </div>
+
+        {/* Bottom Status */}
+        <div className="sidebar-footer">
+
           <div className="status">
             <span className="status-dot"></span>
             RAG System Online
           </div>
 
-          <p>Powered by FAISS + Gemini</p>
+          <div className="powered-by">
+            Powered by FAISS + Groq
+          </div>
+
         </div>
 
       </aside>
 
-      {/* Main */}
-      <main className="main">
+      {/* ================= MAIN CONTENT ================= */}
+      <main className="main-content">
 
-        {/* Header */}
+        {/* Top Bar */}
         <header className="topbar">
 
           <div>
-            <h3>PlacementPrep AI</h3>
+            <h1>PlacementPrep AI</h1>
             <p>Ask questions from your study material</p>
           </div>
 
-          <div className="topbar-badge">
-            <span>●</span> AI Assistant
+          <div className="ai-status">
+            <span className="status-dot"></span>
+            AI Assistant
           </div>
 
         </header>
 
-        {/* Chat */}
-        <section className="chat-area">
+        {/* Chat Area */}
+        <div className="chat-container">
 
           {messages.length === 0 ? (
 
-            <div className="welcome">
+            /* ================= EMPTY STATE ================= */
+            <div className="empty-state">
 
-              <div className="welcome-icon">
+              <div className="empty-icon">
                 ✦
               </div>
 
-              <h1>
-                Prepare smarter.
-                <br />
-                <span>Ask anything.</span>
-              </h1>
+              <h2>
+                Prepare smarter with your study material
+              </h2>
 
-              <p className="welcome-text">
-                Your personal RAG-powered assistant for
-                placement preparation.
+              <p>
+                Upload your placement preparation PDFs and ask
+                questions directly from them.
               </p>
 
               <div className="suggestions">
 
-                {suggestions.map((item, index) => (
+                {suggestions.map((suggestion, index) => (
                   <button
                     key={index}
-                    onClick={() => askQuestion(item)}
+                    className="suggestion"
+                    onClick={() => askQuestion(suggestion)}
                   >
-                    <span>→</span>
-                    {item}
+                    {suggestion}
                   </button>
                 ))}
 
@@ -282,115 +293,41 @@ function App() {
 
           ) : (
 
-            <div className="conversation">
+            /* ================= CHAT MESSAGES ================= */
+            <div className="messages">
 
               {messages.map((message, index) => (
 
                 <div
                   key={index}
-                  className={`message-row ${message.type}`}
+                  className={`message ${
+                    message.role === "user"
+                      ? "user-message"
+                      : "assistant-message"
+                  }`}
                 >
-
-                  {message.type === "bot" && (
-                    <div className="avatar ai-avatar">
-                      ✦
-                    </div>
-                  )}
 
                   <div className="message-content">
 
                     <div className="message-label">
-                      {message.type === "user"
+                      {message.role === "user"
                         ? "You"
                         : "PlacementPrep AI"}
                     </div>
 
-                    <div
-                      className={`message-bubble ${
-                        message.error ? "error" : ""
-                      }`}
-                    >
-                      {message.text}
+                    <div className="message-text">
+                      {message.content}
                     </div>
-
-                    {message.sources &&
-                      message.sources.length > 0 && (
-
-                      <div className="sources">
-
-                        <div className="sources-title">
-                          <span>⌕</span>
-                          Retrieved Sources
-                        </div>
-
-                        <div className="source-list">
-
-                          {message.sources.map(
-                            (source, sourceIndex) => (
-
-                            <div
-                              className="source"
-                              key={sourceIndex}
-                            >
-                              <span className="file-icon">
-                                ▤
-                              </span>
-
-                              <span>{message.sources && message.sources.length > 0 && (
-  <div className="sources">
-    <h4>Sources</h4>
-
-    <div className="source-list">
-      {message.sources.map((source, sourceIndex) => (
-        <div className="source" key={sourceIndex}>
-          <div className="source-header">
-            <span className="file-icon">▤</span>
-
-            <span className="source-file">
-              {source.file}
-            </span>
-
-            <span className="source-distance">
-              {Number(source.distance).toFixed(2)}
-            </span>
-          </div>
-
-          <p className="source-snippet">
-            {source.snippet}
-          </p>
-        </div>
-      ))}
-    </div>
-  </div>
-)}</span>
-                            </div>
-
-                          ))}
-
-                        </div>
-
-                      </div>
-                    )}
 
                   </div>
-
-                  {message.type === "user" && (
-                    <div className="avatar user-avatar">
-                      U
-                    </div>
-                  )}
 
                 </div>
 
               ))}
 
+              {/* Loading */}
               {loading && (
-
-                <div className="message-row bot">
-
-                  <div className="avatar ai-avatar">
-                    ✦
-                  </div>
+                <div className="message assistant-message">
 
                   <div className="message-content">
 
@@ -398,12 +335,10 @@ function App() {
                       PlacementPrep AI
                     </div>
 
-                    <div className="message-bubble loading">
-
+                    <div className="typing">
                       <span></span>
                       <span></span>
                       <span></span>
-
                     </div>
 
                   </div>
@@ -412,14 +347,15 @@ function App() {
               )}
 
             </div>
+
           )}
 
-        </section>
+        </div>
 
-        {/* Input */}
-        <div className="input-wrapper">
+        {/* ================= INPUT AREA ================= */}
+        <div className="input-area">
 
-          <div className="input-box">
+          <div className="input-wrapper">
 
             <textarea
               value={question}
@@ -440,10 +376,10 @@ function App() {
 
           </div>
 
-          <p className="input-hint">
-            Press <strong>Enter</strong> to send ·
-            Answers are generated from your uploaded study material
-          </p>
+          <div className="input-hint">
+            Press Enter to send · Answers are generated from your
+            uploaded study material
+          </div>
 
         </div>
 

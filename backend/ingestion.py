@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 # Project paths
 BASE_DIR = Path(__file__).resolve().parent
-DOCUMENTS_PATH = BASE_DIR.parent / "documents"
+DOCUMENTS_PATH = BASE_DIR.parent / "knowledge_base"
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
