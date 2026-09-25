@@ -1,7 +1,7 @@
 import faiss
 import pickle
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
+from embeddings import get_model
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -9,7 +9,7 @@ VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 
 
 # Load embedding model
-model = SentenceTransformer("all-MiniLM-L6-v2")
+
 
 
 index = None
@@ -40,7 +40,7 @@ def retrieve_documents(query, top_k=5):
     # --------------------------------
     # 1. Semantic vector search
     # --------------------------------
-
+    model = get_model()
     query_embedding = model.encode([query])
 
     search_k = min(top_k * 10, index.ntotal)

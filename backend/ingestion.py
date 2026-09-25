@@ -1,10 +1,10 @@
 import os
 import pickle
 import faiss
-
+from embeddings import get_model
 from pathlib import Path
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
+
 
 
 # Project paths
@@ -12,7 +12,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DOCUMENTS_PATH = BASE_DIR.parent / "knowledge_base"
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
 def extract_text_from_pdf(file_path):
@@ -78,7 +77,7 @@ def create_vector_database():
 
     if not all_chunks:
         raise ValueError("No PDF content found.")
-
+    model = get_model()
     embeddings = model.encode(all_chunks)
 
     dimension = embeddings.shape[1]
@@ -129,6 +128,7 @@ def add_pdf_to_vector_database(file_path):
         )
 
     # 3. Create embeddings
+    model = get_model()
     embeddings = model.encode(chunks)
 
     # 4. Load existing FAISS index
