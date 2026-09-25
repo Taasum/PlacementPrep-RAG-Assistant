@@ -1,64 +1,91 @@
-import faiss
 import pickle
 from pathlib import Path
-from embeddings import get_model
+
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 BASE_DIR = Path(__file__).resolve().parent
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
 
 
-# Load embedding model
-
-
-
-index = None
+vectorizer = None
+vectors = None
 metadata = []
 
 
 def load_vector_database():
-    global index, metadata
 
-    index = faiss.read_index(
-        str(VECTORSTORE_PATH / "index.faiss")
-    )
+    global vectorizer, vectors, metadata
 
-    with open(VECTORSTORE_PATH / "metadata.pkl", "rb") as f:
+    with open(
+        VECTORSTORE_PATH / "vectorizer.pkl",
+        "rb"
+    ) as f:
+
+        vectorizer = pickle.load(f)
+
+    with open(
+        VECTORSTORE_PATH / "vectors.pkl",
+        "rb"
+    ) as f:
+
+        vectors = pickle.load(f)
+
+    with open(
+        VECTORSTORE_PATH / "metadata.pkl",
+        "rb"
+    ) as f:
+
         metadata = pickle.load(f)
 
-    print("Vector database loaded.")
-    print("FAISS vectors:", index.ntotal)
-    print("Metadata entries:", len(metadata))
+    print("TF-IDF vector database loaded.")
+
+    print(
+        "Total vectors:",
+        vectors.shape[0]
+    )
+
+    print(
+        "Metadata entries:",
+        len(metadata)
+    )
 
 
-# Load vector database when the application starts
+# Load database when application starts
 load_vector_database()
 
 
 def retrieve_documents(query, top_k=5):
 
     # --------------------------------
-    # 1. Semantic vector search
+    # 1. Convert query into TF-IDF vector
     # --------------------------------
-    model = get_model()
-    query_embedding = model.encode([query])
 
-    search_k = min(top_k * 10, index.ntotal)
+    query_vector = vectorizer.transform([query])
 
-    distances, indices = index.search(
-        query_embedding,
-        search_k
-    )
+    # --------------------------------
+    # 2. Calculate cosine similarity
+    # --------------------------------
+
+    similarities = cosine_similarity(
+        query_vector,
+        vectors
+    )[0]
+
+    # Get indices sorted by similarity
+    ranked_indices = similarities.argsort()[::-1]
 
     results = []
+
     seen_chunks = set()
 
-    for i in range(search_k):
+    # --------------------------------
+    # 3. Retrieve relevant chunks
+    # --------------------------------
 
-        index_position = indices[0][i]
+    for index_position in ranked_indices:
 
-        if index_position == -1:
-            continue
+        score = similarities[index_position]
 
         chunk_text = metadata[index_position]["text"]
 
@@ -68,18 +95,21 @@ def retrieve_documents(query, top_k=5):
 
         seen_chunks.add(chunk_text)
 
+        # Ignore completely unrelated chunks
+        if score <= 0:
+            continue
+
         results.append({
             "text": chunk_text,
             "source": metadata[index_position]["source"],
-            "distance": float(distances[0][i])
+            "distance": float(1 - score)
         })
 
         if len(results) == top_k:
             break
 
-
     # --------------------------------
-    # 2. Keyword fallback
+    # 4. Keyword fallback
     # --------------------------------
 
     query_words = set(
@@ -112,13 +142,10 @@ def retrieve_documents(query, top_k=5):
                     "keyword_score": score
                 })
 
-
-    # Sort keyword matches by relevance
     keyword_results.sort(
         key=lambda x: x["keyword_score"],
         reverse=True
     )
-
 
     # Add keyword matches
     for result in keyword_results:
@@ -126,15 +153,14 @@ def retrieve_documents(query, top_k=5):
         if result["text"] not in seen_chunks:
 
             results.append(result)
+
             seen_chunks.add(result["text"])
 
-
-    # Keep only required number of results
+    # Keep only top_k results
     results = results[:top_k]
 
-
     # --------------------------------
-    # 3. Display retrieved documents
+    # 5. Display retrieved documents
     # --------------------------------
 
     print("\nRetrieved documents:")
@@ -143,7 +169,7 @@ def retrieve_documents(query, top_k=5):
 
         print(
             f"Source: {result['source']} | "
-            f"Distance: {result['distance']:.4f}"
+            f"Score/Distance: {result['distance']:.4f}"
         )
 
         print(
@@ -152,7 +178,6 @@ def retrieve_documents(query, top_k=5):
         )
 
         print()
-
 
     return results
 

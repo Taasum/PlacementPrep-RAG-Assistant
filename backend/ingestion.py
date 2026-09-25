@@ -1,17 +1,14 @@
 import os
 import pickle
-import faiss
-from embeddings import get_model
 from pathlib import Path
+
 from pypdf import PdfReader
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-
-# Project paths
 BASE_DIR = Path(__file__).resolve().parent
 DOCUMENTS_PATH = BASE_DIR.parent / "knowledge_base"
 VECTORSTORE_PATH = BASE_DIR / "vectorstore"
-
 
 
 def extract_text_from_pdf(file_path):
@@ -34,6 +31,7 @@ def create_chunks(text, chunk_size=1000, overlap=200):
     start = 0
 
     while start < len(text):
+
         end = start + chunk_size
 
         chunk = text[start:end]
@@ -47,6 +45,7 @@ def create_chunks(text, chunk_size=1000, overlap=200):
 
 
 def create_vector_database():
+
     all_chunks = []
     metadata = []
 
@@ -77,22 +76,33 @@ def create_vector_database():
 
     if not all_chunks:
         raise ValueError("No PDF content found.")
-    model = get_model()
-    embeddings = model.encode(all_chunks)
 
-    dimension = embeddings.shape[1]
+    # Create TF-IDF vectors
+    vectorizer = TfidfVectorizer(
+        stop_words="english"
+    )
 
-    index = faiss.IndexFlatL2(dimension)
-
-    index.add(embeddings)
+    vectors = vectorizer.fit_transform(all_chunks)
 
     VECTORSTORE_PATH.mkdir(exist_ok=True)
 
-    faiss.write_index(
-        index,
-        str(VECTORSTORE_PATH / "index.faiss")
-    )
+    # Save TF-IDF vectorizer
+    with open(
+        VECTORSTORE_PATH / "vectorizer.pkl",
+        "wb"
+    ) as f:
 
+        pickle.dump(vectorizer, f)
+
+    # Save document vectors
+    with open(
+        VECTORSTORE_PATH / "vectors.pkl",
+        "wb"
+    ) as f:
+
+        pickle.dump(vectors, f)
+
+    # Save metadata
     with open(
         VECTORSTORE_PATH / "metadata.pkl",
         "wb"
@@ -100,22 +110,21 @@ def create_vector_database():
 
         pickle.dump(metadata, f)
 
-    print("Vector database created successfully!")
+    print("TF-IDF vector database created successfully!")
 
 
 def add_pdf_to_vector_database(file_path):
 
     print(f"Processing uploaded PDF: {file_path}")
 
-    # 1. Extract text
     text = extract_text_from_pdf(file_path)
 
     if not text.strip():
+
         raise ValueError(
             "No text could be extracted from the PDF."
         )
 
-    # 2. Create chunks
     chunks = create_chunks(
         text,
         chunk_size=1000,
@@ -123,23 +132,12 @@ def add_pdf_to_vector_database(file_path):
     )
 
     if not chunks:
+
         raise ValueError(
             "No usable chunks were created."
         )
 
-    # 3. Create embeddings
-    model = get_model()
-    embeddings = model.encode(chunks)
-
-    # 4. Load existing FAISS index
-    index = faiss.read_index(
-        str(VECTORSTORE_PATH / "index.faiss")
-    )
-
-    # 5. Add new embeddings
-    index.add(embeddings)
-
-    # 6. Load existing metadata
+    # Load existing data
     with open(
         VECTORSTORE_PATH / "metadata.pkl",
         "rb"
@@ -147,7 +145,7 @@ def add_pdf_to_vector_database(file_path):
 
         metadata = pickle.load(f)
 
-    # 7. Add metadata
+    # Add new chunks
     for chunk in chunks:
 
         metadata.append({
@@ -155,13 +153,35 @@ def add_pdf_to_vector_database(file_path):
             "text": chunk
         })
 
-    # 8. Save updated FAISS index
-    faiss.write_index(
-        index,
-        str(VECTORSTORE_PATH / "index.faiss")
+    # Rebuild TF-IDF database with all chunks
+    all_texts = [
+        item["text"]
+        for item in metadata
+    ]
+
+    vectorizer = TfidfVectorizer(
+        stop_words="english"
     )
 
-    # 9. Save updated metadata
+    vectors = vectorizer.fit_transform(
+        all_texts
+    )
+
+    # Save everything
+    with open(
+        VECTORSTORE_PATH / "vectorizer.pkl",
+        "wb"
+    ) as f:
+
+        pickle.dump(vectorizer, f)
+
+    with open(
+        VECTORSTORE_PATH / "vectors.pkl",
+        "wb"
+    ) as f:
+
+        pickle.dump(vectors, f)
+
     with open(
         VECTORSTORE_PATH / "metadata.pkl",
         "wb"
@@ -178,4 +198,5 @@ def add_pdf_to_vector_database(file_path):
 
 
 if __name__ == "__main__":
+
     create_vector_database()

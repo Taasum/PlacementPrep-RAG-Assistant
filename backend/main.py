@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from ingestion import add_pdf_to_vector_database
 from rag import ask_rag
-from retrieval import load_vector_database, index, metadata
+from retrieval import load_vector_database
 
 
 # =========================================================
